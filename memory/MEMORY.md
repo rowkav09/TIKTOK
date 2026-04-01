@@ -1,1 +1,1 @@
-- [TikTok Door Agent](project_door_agent.md) — automated "choose a door" TikTok pipeline, £15/mo budget, 2 posts/day
+- [TikTok Door Agent](project_door_agent.md) — automated "choose a door" TikTok pipeline, £15/mo budget, 1 post/day

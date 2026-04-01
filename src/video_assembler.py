@@ -1,4 +1,4 @@
-"""Assembles final TikTok video from intro + images + TTS audio."""
+"""Assembles final TikTok video from intro + images + TTS audio + midslice."""
 
 from pathlib import Path
 from moviepy import (
@@ -10,59 +10,34 @@ from moviepy import (
     CompositeAudioClip,
     concatenate_videoclips,
 )
-from src.config import OUTPUT_DIR, INTRO_VIDEO, VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_FPS
+from src.config import (
+    OUTPUT_DIR, INTRO_VIDEO, MIDSLICE_VIDEO,
+    VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_FPS,
+)
 
 
-def _make_door_reveal_clip(image_path: Path, audio_path: Path,
-                           duration: float, door_type: str,
-                           outcome: str) -> VideoFileClip:
-    """Create a clip showing a door reveal image with narration.
+def _make_slideshow_clip(image_paths: list[Path], audio_path: Path,
+                         duration: float) -> CompositeVideoClip:
+    """Create a slideshow of images synced to a narration audio track.
 
-    The image is displayed for exactly the duration of the audio,
-    with a text overlay showing which door it is.
+    Images are shown sequentially, each for an equal share of the total duration.
     """
-    # Load and resize image to fill 1080x1920
-    img_clip = (
-        ImageClip(str(image_path))
-        .resized((VIDEO_WIDTH, VIDEO_HEIGHT))
-        .with_duration(duration + 0.5)  # slight padding after audio ends
-    )
+    num_images = len(image_paths)
+    time_per_image = (duration + 0.5) / num_images  # +0.5s padding after audio
 
-    # Add label overlay (e.g., "THE PAST DOOR" or "THE FUTURE DOOR")
-    label_text = f"THE {door_type.upper()} DOOR"
-    label = (
-        TextClip(
-            text=label_text,
-            font_size=60,
-            color="white",
-            font="Arial-Bold",
-            stroke_color="black",
-            stroke_width=3,
+    clips = []
+    for i, img_path in enumerate(image_paths):
+        img_clip = (
+            ImageClip(str(img_path))
+            .resized((VIDEO_WIDTH, VIDEO_HEIGHT))
+            .with_duration(time_per_image)
+            .with_start(i * time_per_image)
         )
-        .with_position(("center", 120))
-        .with_duration(duration + 0.5)
-    )
+        clips.append(img_clip)
 
-    # Add outcome hint at the bottom
-    outcome_color = "#00ff88" if outcome == "good" else "#ff4444"
-    outcome_label = (
-        TextClip(
-            text=outcome.upper(),
-            font_size=48,
-            color=outcome_color,
-            font="Arial-Bold",
-            stroke_color="black",
-            stroke_width=2,
-        )
-        .with_position(("center", VIDEO_HEIGHT - 200))
-        .with_duration(duration + 0.5)
-    )
-
-    # Composite image + labels
-    video = CompositeVideoClip(
-        [img_clip, label, outcome_label],
-        size=(VIDEO_WIDTH, VIDEO_HEIGHT),
-    )
+    total_duration = num_images * time_per_image
+    video = CompositeVideoClip(clips, size=(VIDEO_WIDTH, VIDEO_HEIGHT))
+    video = video.with_duration(total_duration)
 
     # Add narration audio
     audio = AudioFileClip(str(audio_path))
@@ -75,9 +50,15 @@ def assemble_video(script: dict, images: dict, narrations: dict,
                    run_id: str) -> Path:
     """Assemble the full TikTok video.
 
+    Structure:
+        1. intro.mp4 (past door opens)
+        2. Past door slideshow + narration
+        3. midslice.mp4 (transition to future door)
+        4. Future door slideshow + narration
+
     Args:
-        script: The script dict with door info.
-        images: Dict with 'first_door' and 'second_door' image paths.
+        script: The script dict with past_door and future_door info.
+        images: Dict with 'past_door' and 'future_door' lists of image paths.
         narrations: Dict with door keys mapping to {audio_path, duration}.
         run_id: Unique identifier for this video run.
 
@@ -86,7 +67,7 @@ def assemble_video(script: dict, images: dict, narrations: dict,
     """
     clips = []
 
-    # 1. Intro clip (user-provided)
+    # 1. Intro clip
     if INTRO_VIDEO.exists():
         intro = (
             VideoFileClip(str(INTRO_VIDEO))
@@ -94,9 +75,7 @@ def assemble_video(script: dict, images: dict, narrations: dict,
         )
         clips.append(intro)
     else:
-        # If no intro video, create a simple title card
         print("WARNING: No intro video found at assets/intro.mp4")
-        print("Using placeholder title card instead.")
         title = (
             TextClip(
                 text="CHOOSE A DOOR\n\nPAST  or  FUTURE?",
@@ -112,27 +91,31 @@ def assemble_video(script: dict, images: dict, narrations: dict,
         )
         clips.append(title)
 
-    # 2. First door reveal
-    first_door = script["first_door"]
-    first_clip = _make_door_reveal_clip(
-        image_path=images["first_door"],
-        audio_path=narrations["first_door"]["audio_path"],
-        duration=narrations["first_door"]["duration"],
-        door_type=first_door["type"],
-        outcome=first_door["outcome"],
+    # 2. Past door slideshow
+    past_clip = _make_slideshow_clip(
+        image_paths=images["past_door"],
+        audio_path=narrations["past_door"]["audio_path"],
+        duration=narrations["past_door"]["duration"],
     )
-    clips.append(first_clip)
+    clips.append(past_clip)
 
-    # 3. Second door reveal
-    second_door = script["second_door"]
-    second_clip = _make_door_reveal_clip(
-        image_path=images["second_door"],
-        audio_path=narrations["second_door"]["audio_path"],
-        duration=narrations["second_door"]["duration"],
-        door_type=second_door["type"],
-        outcome=second_door["outcome"],
+    # 3. Midslice transition clip
+    if MIDSLICE_VIDEO.exists():
+        midslice = (
+            VideoFileClip(str(MIDSLICE_VIDEO))
+            .resized((VIDEO_WIDTH, VIDEO_HEIGHT))
+        )
+        clips.append(midslice)
+    else:
+        print("WARNING: No midslice video found at assets/midslice.mp4")
+
+    # 4. Future door slideshow
+    future_clip = _make_slideshow_clip(
+        image_paths=images["future_door"],
+        audio_path=narrations["future_door"]["audio_path"],
+        duration=narrations["future_door"]["duration"],
     )
-    clips.append(second_clip)
+    clips.append(future_clip)
 
     # Concatenate all clips
     final = concatenate_videoclips(clips, method="compose")

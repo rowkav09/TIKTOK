@@ -9,6 +9,10 @@ PROJECT_ROOT = Path(__file__).parent.parent
 ASSETS_DIR = PROJECT_ROOT / "assets"
 OUTPUT_DIR = PROJECT_ROOT / "output"
 INTRO_VIDEO = ASSETS_DIR / "intro.mp4"
+MIDSLICE_VIDEO = ASSETS_DIR / "midslice.mp4"
+
+# Number of images to generate per door
+IMAGES_PER_DOOR = 3
 
 # Ensure output dir exists
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -28,4 +32,4 @@ VIDEO_HEIGHT = 1920
 VIDEO_FPS = 30
 
 # TTS voice (Microsoft Edge TTS)
-TTS_VOICE = "en-US-GuyNeural"  # deep, dramatic voice
+TTS_VOICE = "en-US-EricNeural"  # deep, dramatic male voice

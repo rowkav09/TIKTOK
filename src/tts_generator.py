@@ -52,7 +52,7 @@ def generate_door_narrations(script: dict,
         Dict with door keys mapping to (audio_path, duration) tuples.
     """
     narrations = {}
-    for door_key in ("first_door", "second_door"):
+    for door_key in ("past_door", "future_door"):
         door = script[door_key]
         audio_path, duration = generate_narration(
             text=door["narration"],

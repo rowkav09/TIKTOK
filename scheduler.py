@@ -24,12 +24,10 @@ def job():
         print(f"Pipeline error (will retry next scheduled run): {e}")
 
 
-# Schedule 2 posts per day — adjust times as you like
-# Posting at peak TikTok hours (morning + evening)
-schedule.every().day.at("09:00").do(job)
+# Schedule 1 post per day — evening peak hour
 schedule.every().day.at("19:00").do(job)
 
-print("Scheduler started. Videos will be generated at 09:00 and 19:00 daily.")
+print("Scheduler started. Videos will be generated at 19:00 daily.")
 print("Press Ctrl+C to stop.\n")
 
 while True:

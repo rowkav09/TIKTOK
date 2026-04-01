@@ -2,7 +2,17 @@
 
 import sys
 import uuid
+import os
 from datetime import datetime
+
+# Fix Windows console encoding for emoji/unicode
+if sys.platform == "win32":
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 from src.script_generator import generate_script
 from src.image_generator import generate_door_images
@@ -23,13 +33,11 @@ def run_pipeline() -> dict:
     # Step 1: Generate script
     print("[1/5] Generating script...")
     script = generate_script()
-    print(f"  First door: {script['first_door']['type']} "
-          f"({script['first_door']['outcome']})")
-    print(f"  Second door: {script['second_door']['type']} "
-          f"({script['second_door']['outcome']})")
+    print(f"  Past door: {script['past_door']['outcome']}")
+    print(f"  Future door: {script['future_door']['outcome']}")
     print(f"  Caption: {script['caption']}\n")
 
-    # Step 2: Generate images
+    # Step 2: Generate images (multiple per door)
     print("[2/5] Generating images...")
     images = generate_door_images(script, run_id)
     print()

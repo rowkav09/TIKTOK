@@ -3,78 +3,82 @@
 import json
 import random
 from anthropic import Anthropic
-from src.config import ANTHROPIC_API_KEY
+from src.config import ANTHROPIC_API_KEY, IMAGES_PER_DOOR
 
 client = Anthropic(api_key=ANTHROPIC_API_KEY)
 
-SYSTEM_PROMPT = """You are a scriptwriter for a viral TikTok series called "Choose a Door".
+SYSTEM_PROMPT = f"""You are a scriptwriter for a viral TikTok series called "Choose a Door".
 
-The format: viewers see two doors — a PAST door and a FUTURE door. One door is GOOD, one is BAD.
-After the intro, each door is revealed one at a time with a dramatic narration.
+The format: viewers see two doors — a PAST door and a FUTURE door. One is GOOD, one is BAD.
+The past door is ALWAYS revealed first, then the future door.
 
 Your job is to write:
-1. A short, punchy narration for the FIRST door reveal (2-3 sentences, ~5-8 seconds when spoken)
-2. A short, punchy narration for the SECOND door reveal (2-3 sentences, ~5-8 seconds when spoken)
-3. An image prompt for each door's reveal scene
+1. A narration for the PAST door reveal (3-5 sentences, ~8-12 seconds when spoken)
+2. A narration for the FUTURE door reveal (3-5 sentences, ~8-12 seconds when spoken)
+3. {IMAGES_PER_DOOR} distinct image prompts per door — each showing a different angle or scene from that world
 
-Rules:
-- The GOOD door should describe something amazing, aspirational, or beautiful
-- The BAD door should describe something eerie, unsettling, dystopian, or creepy (but NOT graphic violence or gore — keep it TikTok-safe)
-- Past-themed doors should feel vintage, historical, nostalgic, or ancient
-- Future-themed doors should feel sci-fi, futuristic, advanced, or otherworldly
-- Narrations should be dramatic and engaging — like a narrator in a thriller
-- Image prompts should be vivid and detailed for AI image generation
-- Keep narrations SHORT — this is TikTok, attention spans are tiny
+CRITICAL RULES:
+- NEVER mention "doors" anywhere in the narrations. Describe only the world/scene itself.
+  BAD: "Behind this door lies a golden city..."
+  GOOD: "A golden city stretches across the horizon..."
+- The GOOD world should be breathtaking, beautiful, aspirational, fantastical
+- The BAD world should be deeply unsettling, eerie, nightmarish, borderline horrifying (but NO real gore, graphic violence, or anything that violates TikTok guidelines — think psychological horror, dystopian decay, surreal dread)
+- Past worlds should feel ancient, mythological, fantastical, like stepping into a legend
+- Future worlds should feel sci-fi, advanced, otherworldly, alien
+- Narrations should be dramatic and immersive — paint the scene with words
+- Each image prompt must depict a DIFFERENT scene/angle of the same world so viewers see variety
+- Image prompts should be vivid and highly detailed for AI image generation
+- All {IMAGES_PER_DOOR} images for one door must share the same coherent theme and visual style
 
 Respond in this exact JSON format:
-{
-  "first_door": {
-    "type": "past" or "future",
+{{
+  "past_door": {{
     "outcome": "good" or "bad",
-    "narration": "The narration text spoken during this reveal",
-    "image_prompt": "Detailed image generation prompt for this scene"
-  },
-  "second_door": {
-    "type": "past" or "future",
+    "narration": "The narration text for the past world (NO mention of doors)",
+    "image_prompts": [
+      "Image prompt 1 — a wide establishing shot of this world",
+      "Image prompt 2 — a closer detail or different area",
+      "Image prompt 3 — a final dramatic perspective"
+    ]
+  }},
+  "future_door": {{
     "outcome": "good" or "bad",
-    "narration": "The narration text spoken during this reveal",
-    "image_prompt": "Detailed image generation prompt for this scene"
-  },
+    "narration": "The narration text for the future world (NO mention of doors)",
+    "image_prompts": [
+      "Image prompt 1 — a wide establishing shot of this world",
+      "Image prompt 2 — a closer detail or different area",
+      "Image prompt 3 — a final dramatic perspective"
+    ]
+  }},
   "caption": "A TikTok caption with hashtags (under 150 chars)"
-}"""
+}}"""
 
 
 def generate_script() -> dict:
-    """Generate a randomized door reveal script.
+    """Generate a door reveal script.
 
-    Returns a dict with first_door, second_door, and caption.
+    Past door is always first. Good/bad assignment is random.
+
+    Returns a dict with past_door, future_door, and caption.
     """
-    # Randomly assign good/bad to past/future
     past_is_good = random.choice([True, False])
-    # Randomly decide which door is revealed first
-    first_is_past = random.choice([True, False])
 
-    if first_is_past:
-        first_type = "past"
-        first_outcome = "good" if past_is_good else "bad"
-        second_type = "future"
-        second_outcome = "bad" if past_is_good else "good"
-    else:
-        first_type = "future"
-        first_outcome = "bad" if past_is_good else "good"
-        second_type = "past"
-        second_outcome = "good" if past_is_good else "bad"
+    past_outcome = "good" if past_is_good else "bad"
+    future_outcome = "bad" if past_is_good else "good"
 
     user_prompt = (
         f"Generate a door reveal script.\n"
-        f"First door: {first_type} door — {first_outcome} outcome.\n"
-        f"Second door: {second_type} door — {second_outcome} outcome.\n"
-        f"Make it unique and creative. Surprise the viewer."
+        f"Past door: {past_outcome} outcome.\n"
+        f"Future door: {future_outcome} outcome.\n"
+        f"Make it unique, creative, and immersive. "
+        f"The {past_outcome if past_outcome == 'bad' else future_outcome} world "
+        f"should be genuinely unsettling and nightmarish. "
+        f"Remember: NEVER mention doors in the narrations."
     )
 
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=1024,
+        max_tokens=2048,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_prompt}],
     )
@@ -90,14 +94,19 @@ def generate_script() -> dict:
     script = json.loads(text.strip())
 
     # Validate structure
-    for key in ("first_door", "second_door", "caption"):
+    for key in ("past_door", "future_door", "caption"):
         if key not in script:
             raise ValueError(f"Missing key in script: {key}")
-    for door_key in ("first_door", "second_door"):
+    for door_key in ("past_door", "future_door"):
         door = script[door_key]
-        for field in ("type", "outcome", "narration", "image_prompt"):
+        for field in ("outcome", "narration", "image_prompts"):
             if field not in door:
                 raise ValueError(f"Missing field '{field}' in {door_key}")
+        if len(door["image_prompts"]) < IMAGES_PER_DOOR:
+            raise ValueError(
+                f"{door_key} has {len(door['image_prompts'])} image prompts, "
+                f"expected {IMAGES_PER_DOOR}"
+            )
 
     return script
 

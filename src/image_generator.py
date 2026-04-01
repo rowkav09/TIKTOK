@@ -1,5 +1,6 @@
 """Generates images for door reveals using Flux on Replicate."""
 
+import time
 import requests
 import replicate
 from pathlib import Path
@@ -18,87 +19,103 @@ def _style_prompt(image_prompt: str, door_type: str, outcome: str) -> str:
         "vibrant colors, movie poster quality"
     )
     if door_type == "past":
-        style += ", vintage aesthetic, sepia undertones, historical"
+        style += ", fantasy art, mythological, ancient civilization, painterly"
     else:
-        style += ", neon glow, futuristic, sci-fi aesthetic, holographic"
+        style += ", neon glow, futuristic, sci-fi aesthetic, holographic, cybernetic"
 
     if outcome == "bad":
-        style += ", eerie atmosphere, unsettling, dark moody lighting, ominous"
+        style += (
+            ", nightmarish, deeply unsettling, psychological horror, "
+            "dark oppressive atmosphere, dread, decay, ominous shadows, "
+            "distorted reality, surreal horror"
+        )
     else:
-        style += ", warm golden light, beautiful, awe-inspiring, hopeful"
+        style += ", warm golden light, beautiful, awe-inspiring, hopeful, majestic"
 
     return f"{image_prompt}, {style}"
 
 
 def generate_image(image_prompt: str, door_type: str, outcome: str,
-                   filename: str) -> Path:
-    """Generate a single image using Flux Schnell on Replicate.
-
-    Args:
-        image_prompt: The scene description from the script generator.
-        door_type: "past" or "future".
-        outcome: "good" or "bad".
-        filename: Output filename (without extension).
+                   filename: str, retries: int = 3) -> Path:
+    """Generate a single image using Flux 1.1 Pro on Replicate.
 
     Returns:
         Path to the saved image file.
     """
     full_prompt = _style_prompt(image_prompt, door_type, outcome)
 
-    output = replicate.run(
-        "black-forest-labs/flux-schnell",
-        input={
-            "prompt": full_prompt,
-            "num_outputs": 1,
-            "aspect_ratio": "9:16",
-            "output_format": "png",
-            "output_quality": 90,
-        },
-    )
+    for attempt in range(retries):
+        try:
+            output = replicate.run(
+                "black-forest-labs/flux-1.1-pro",
+                input={
+                    "prompt": full_prompt,
+                    "num_outputs": 1,
+                    "aspect_ratio": "9:16",
+                    "output_format": "png",
+                    "output_quality": 90,
+                },
+            )
 
-    # Flux returns a list of FileOutput objects
-    image_url = output[0]
-    if hasattr(image_url, "url"):
-        image_url = image_url.url
-    image_url = str(image_url)
+            # Flux may return a list or a single FileOutput depending on model
+            if isinstance(output, list):
+                image_url = output[0]
+            else:
+                image_url = output
+            if hasattr(image_url, "url"):
+                image_url = image_url.url
+            image_url = str(image_url)
 
-    # Download the image
-    response = requests.get(image_url)
-    response.raise_for_status()
+            # Download the image
+            response = requests.get(image_url, timeout=30)
+            response.raise_for_status()
 
-    output_path = OUTPUT_DIR / f"{filename}.png"
-    output_path.write_bytes(response.content)
+            output_path = OUTPUT_DIR / f"{filename}.png"
+            output_path.write_bytes(response.content)
+            return output_path
 
-    return output_path
+        except Exception as e:
+            if attempt < retries - 1:
+                wait = 15 * (attempt + 1)
+                print(f"    Retry {attempt+1}/{retries} after error: {e}")
+                time.sleep(wait)
+            else:
+                raise
 
 
 def generate_door_images(script: dict, run_id: str) -> dict:
     """Generate images for both doors in a script.
 
-    Args:
-        script: The script dict from script_generator.
-        run_id: Unique identifier for this video run.
+    Each door has multiple image prompts, so this generates
+    IMAGES_PER_DOOR images per door.
 
     Returns:
-        Dict with 'first_door' and 'second_door' image paths.
+        Dict with 'past_door' and 'future_door' keys, each mapping
+        to a list of image Paths.
     """
     images = {}
-    for door_key in ("first_door", "second_door"):
+    door_types = {"past_door": "past", "future_door": "future"}
+
+    for door_key, door_type in door_types.items():
         door = script[door_key]
-        path = generate_image(
-            image_prompt=door["image_prompt"],
-            door_type=door["type"],
-            outcome=door["outcome"],
-            filename=f"{run_id}_{door_key}",
-        )
-        images[door_key] = path
-        print(f"Generated {door_key} image: {path}")
+        door_images = []
+        for i, prompt in enumerate(door["image_prompts"]):
+            if i > 0 or door_key != "past_door":
+                time.sleep(12)  # respect rate limits
+            path = generate_image(
+                image_prompt=prompt,
+                door_type=door_type,
+                outcome=door["outcome"],
+                filename=f"{run_id}_{door_key}_{i}",
+            )
+            door_images.append(path)
+            print(f"  Generated {door_key} image {i+1}/{len(door['image_prompts'])}: {path}")
+        images[door_key] = door_images
 
     return images
 
 
 if __name__ == "__main__":
-    # Test with a sample prompt
     path = generate_image(
         image_prompt="A golden ancient library filled with glowing books of infinite knowledge",
         door_type="past",
